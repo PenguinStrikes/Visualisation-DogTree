@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+body {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  margin: 0;
+}
+
+.links {
+  fill: none;
+  stroke-width: 2.5px;
+  stroke: #000;
+}
+
+.link-extensions {
+  fill: none;
+  stroke: #000;
+  stroke-opacity: .25;
+}
+
+.labels {
+  font: 10px sans-serif;
+}
+
+.link--active {
+  stroke: #000 !important;
+  stroke-width: 4.0px;
+}
+
+.link-extension--active {
+  stroke-opacity: .6;
+}
+
+.label--active {
+  font-weight: bold;
+
+}
+
+</style>
+<label id="show-length"><input type="checkbox"> Show branch length</label>
+<script src="newick.js"></script>
+<script src="d3.v4.min.js"></script>
+<script>
+
+var outerRadius = 880 / 2,
+    innerRadius = outerRadius - 150;
+
+var color_int = d3.scaleOrdinal()
+	.domain(["Y","N","U"])
+	.range(["#4936AA",'#FD8724',"#878E87"]);
+
+var color = d3.scaleOrdinal()
+    .domain([	"Wild",
+				"Basenji",
+				"AsianSpitz",
+				"Misc",
+				"AsianToy",
+				"NordicSpitz",
+				"Schnauzer",
+				"SmallSpitz",
+				"ToySpitz",
+				"Hungarian",
+				"Poodle",
+				"AmericanToy",
+				"AmericanTerrier",
+				"Pinscher",
+				"Terrier",
+				"NewWorld",
+				"Mediterranean",
+				"ScentHound",
+				"Spaniel",
+				"Retriever",
+				"PointerSetter",
+				"ContinentalHerder",
+				"UKRural",
+				"Drover",
+				"Alpine",
+				"EuropeanMastiff"])
+    .range(["#878E87",
+			"#0A5981",
+			"#6AFDB4",
+			"#1483C3",
+			"#22CCC1",
+			"#8AD4E4",
+			"#927A6B", /* Schnauzer */
+			"#F76472",
+			"#FD8DA4",
+			"#0D6973", /* Hungarian */
+			"#FDA9A6",
+			"#4936AA", /* American Toy */
+			"#9E92C4", /* American Terrier */
+			"#381E78", /* Pinscher */
+			"#9D52A3", /* Terrier */
+			"#D27268",
+			"#FD8724", /* Mediterranean */
+			"#E3C879",
+			"#42241A",
+			"#DAB894",
+			"#BE8A65",
+			"#58AA3C",
+			"#85A256",
+			"#59A9A3",
+			"#5E6988",
+			"#2E3542"]);
+
+var cluster = d3.cluster()
+    .size([360, innerRadius])
+    .separation(function(a, b) { return 1; });
+
+var svg = d3.select("body").append("svg")
+    .attr("width", (outerRadius * 2) + 150)
+    .attr("height", outerRadius * 2);
+
+var legend = svg.append("g")
+    .attr("class", "legend")
+    .selectAll("g")
+    .data(color.domain())
+    .enter().append("g")
+    .attr("transform", function(d, i) { return "translate(" + (outerRadius * 2 + 0) + "," + (i * 20 + 180) + ")"; });
+
+legend.append("rect")
+    .attr("x", -18)
+    .attr("width", 18)
+    .attr("height", 18)
+    .attr("fill", color);
+
+legend.append("text")
+    .attr("x", 6)
+    .attr("y", 9)
+    .attr("dy", ".35em")
+    .text(function(d) { return d; });
+
+var chart = svg.append("g")
+    .attr("transform", "translate(" + outerRadius + "," + outerRadius + ")");
+
+d3.text("data/data_clade.txt", function(error, life) {
+  if (error) throw error;
+
+  var root = d3.hierarchy(parseNewick(life), function(d) { return d.branchset; })
+      .sum(function(d) { return d.branchset ? 0 : 1; })
+      .sort(function(a, b) { return (a.value - b.value) || d3.ascending(a.data.length, b.data.length); });
+
+  cluster(root);
+  setRadius(root, root.data.length = 0, innerRadius);
+  setColor(root);
+
+  var linkExtension = chart.append("g")
+      .attr("class", "link-extensions")
+      .selectAll("path")
+      .data(root.links().filter(function(d) { return !d.target.children; }))
+      .enter().append("path")
+      .each(function(d) { d.target.linkExtensionNode = this; })
+      .attr("d", linkExtensionConstant);
+
+  var link = chart.append("g")
+      .attr("class", "links")
+      .selectAll("path")
+      .data(root.links())
+      .enter().append("path")
+      .each(function(d) { d.target.linkNode = this; })
+      .attr("d", linkConstant)
+      .attr("stroke", function(d) { return d.target.color; });
+
+  chart.append("g")
+      .attr("class", "labels")
+      .selectAll("text")
+      .data(root.leaves())
+      .enter().append("text")
+      .attr("dy", ".31em")
+      .attr("transform", function(d) { return "rotate(" + (d.x - 90) + ")translate(" + (innerRadius + 4) + ",0)" + (d.x < 180 ? "" : "rotate(180)"); })
+      .attr("text-anchor", function(d) { return d.x < 180 ? "start" : "end"; })
+      .text(function(d) { return d.data.name.replace(/_/g, " "); })
+      .style('fill', function(d) {return returnColor(d)})
+      .on("mouseover", mouseovered(true))
+      .on("mouseout", mouseovered(false));
+
+  function mouseovered(active) {
+    return function(d) {
+      d3.select(this).classed("label--active", active);
+      d3.select(d.linkExtensionNode).classed("link-extension--active", active).each(moveToFront);
+      do d3.select(d.linkNode).classed("link--active", active).each(moveToFront); while (d = d.parent);
+    };
+  }
+
+  function moveToFront() {
+    this.parentNode.appendChild(this);
+  }
+});
+
+// Set the radius of each node by recursively summing and scaling the distance from the root.
+function setRadius(d, y0, k) {
+  d.radius = (y0 += d.data.length) * k;
+  if (d.children) d.children.forEach(function(d) { setRadius(d, y0, k); });
+}
+
+function setColor(d) {
+  var name = d.data.color;
+  d.color = color.domain().indexOf(name) >= 0 ? color(name) : d.parent ? d.parent.color : null;
+  if (d.children) d.children.forEach(setColor);
+}
+
+function returnColor_int(d) {
+  var name = d.data.color.split("|")[1];
+  d.color = color_int(name);
+  return d.color
+}
+
+function returnColor(d) {
+  var name = d.data.color
+  d.color = color(name);
+  return d.color
+}
+
+function linkVariable(d) {
+  return linkStep(d.source.x, d.source.radius, d.target.x, d.target.radius);
+}
+
+function linkConstant(d) {
+  return linkStep(d.source.x, d.source.y, d.target.x, d.target.y);
+}
+
+function linkExtensionVariable(d) {
+  return linkStep(d.target.x, d.target.radius, d.target.x, innerRadius);
+}
+
+function linkExtensionConstant(d) {
+  return linkStep(d.target.x, d.target.y, d.target.x, innerRadius);
+}
+
+// Like d3.svg.diagonal.radial, but with square corners.
+function linkStep(startAngle, startRadius, endAngle, endRadius) {
+  var c0 = Math.cos(startAngle = (startAngle - 90) / 180 * Math.PI),
+      s0 = Math.sin(startAngle),
+      c1 = Math.cos(endAngle = (endAngle - 90) / 180 * Math.PI),
+      s1 = Math.sin(endAngle);
+  return "M" + startRadius * c0 + "," + startRadius * s0
+      + (endAngle === startAngle ? "" : "A" + startRadius + "," + startRadius + " 0 0 " + (endAngle > startAngle ? 1 : 0) + " " + startRadius * c1 + "," + startRadius * s1)
+      + "L" + endRadius * c1 + "," + endRadius * s1;
+}
+
+</script>

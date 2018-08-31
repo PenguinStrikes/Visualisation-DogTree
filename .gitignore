@@ -1,0 +1,24 @@
+# OS generated files #
+######################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Data Files #
+######################
+viz/data/*.txt
+data/raw/*.txt
+data/raw/*.csv
+data/processed/*.txt
+
+# Jupyter Notebook #
+######################
+.ipynb_checkpoints
+
+# Byte-compiled / optimized / DLL files
+######################
+__pycache__/
